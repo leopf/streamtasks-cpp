@@ -5,5 +5,5 @@ DEPS=src/main.o src/client.o src/messages.o msgpack11/msgpack11.o
 %.o: %.cpp
 	$(CXX) -c -o $@ $< $(CFLAGS)
 
-build-main: $(DEPS)
+build/main: $(DEPS)
 	$(CXX) -o build/main $(DEPS)

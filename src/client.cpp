@@ -90,3 +90,60 @@ StreamtasksClient StreamtasksClient::connect_unix(const char *socket_path)
 
     return StreamtasksClient(sockfd);
 }
+void StreamtasksClient::send_message(StreamtasksMessage message)
+{
+    send_str(message.serialize());
+}
+
+void StreamtasksClient::request_address()
+{
+    send_message(StreamtasksMessage::in_topics_changed_message({1}, {}));
+
+    std::random_device rand_dev;
+    unsigned int request_id = rand_dev();
+
+    send_message(StreamtasksMessage::addressed_message(0, 103, MsgPack::object
+    {
+        {"descriptor", "request_addresses"}, 
+        {"body", MsgPack::object 
+            {
+                {"request_id", request_id},
+                {"count", 1},
+            }
+        }
+    }));
+
+    while (1)
+    {
+        StreamtasksMessage message = recv_message();
+        if (message.id() == StreamtasksMessageID::MSG_ID_TOPIC_DATA && message.topic() == 1) 
+        {
+            MsgPack data = message.data();
+            if (data.is_object()) 
+            {
+                MsgPack::object items = data.object_items();
+                if (items.count("request_id") > 0 && items.count("addresses") > 0 && items["request_id"].uint32_value() == request_id) 
+                {
+                    for (MsgPack address_w : items["addresses"].array_items()) 
+                    {
+                        address = address_w.uint64_value();
+                    }
+                    if (address == 0) 
+                    {
+                        throw std::runtime_error("failed to request address!");
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    send_message(StreamtasksMessage::addresses_changed_message({address}, {}));
+    send_message(StreamtasksMessage::in_topics_changed_message({}, {1}));
+}
+
+MsgPack StreamtasksClient::fetch(uint64_t address, uint64_t port, const char *descriptor, MsgPack body)
+{
+
+    return MsgPack();
+}

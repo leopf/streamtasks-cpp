@@ -19,6 +19,8 @@ int main(int argc, char const *argv[])
     printf(handshake_data["version"].string_value().c_str());
     printf("\n");
 
+    client.request_address();
+
     while (1)
     {
         auto message = client.recv_message();
