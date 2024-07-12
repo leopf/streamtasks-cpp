@@ -1,5 +1,14 @@
 #include <streamtasks.hpp>
 
+void readexact(int __fd, void *__buf, size_t __nbytes) 
+{
+    int offset = 0;
+    while (offset < __nbytes) 
+    {
+        offset += read(__fd, (char*)__buf + offset, __nbytes - offset);
+    }
+}
+
 StreamtasksClient::StreamtasksClient(int socketfd)
 {
     this->sockfd = socketfd;
@@ -30,7 +39,7 @@ std::string StreamtasksClient::recv_str()
     uint8_t sync_data[1];
     while (sync_index < 4)
     {
-        recv(sockfd, &sync_data, 1, 0);
+        readexact(sockfd, &sync_data, 1);
         if (sync_data[0] != CONNECTION_SYNC_WORD[sync_index])
         {
             sync_index = 0;
@@ -42,11 +51,11 @@ std::string StreamtasksClient::recv_str()
     }
 
     uint8_t raw_data_len[4];
-    read(sockfd, &raw_data_len, 4);
+    readexact(sockfd, &raw_data_len, 4);
     uint32_t data_len = raw_data_len[0] | (raw_data_len[1] << 8) | (raw_data_len[2] << 16) | (raw_data_len[3] << 24);
     printf("data len: %lu\n", data_len);
     std::string out_str(data_len, '\0');
-    read(sockfd, out_str.data(), data_len);
+    readexact(sockfd, out_str.data(), data_len);
     return out_str;
 }
 
