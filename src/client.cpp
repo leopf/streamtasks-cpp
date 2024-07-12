@@ -10,6 +10,11 @@ StreamtasksClient::~StreamtasksClient()
     close(sockfd);
 }
 
+uint64_t StreamtasksClient::get_address()
+{
+    return address;
+}
+
 void StreamtasksClient::send_str(const std::string data)
 {
     size_t l = data.length();
@@ -38,7 +43,8 @@ std::string StreamtasksClient::recv_str()
 
     uint8_t raw_data_len[4];
     read(sockfd, &raw_data_len, 4);
-    uint64_t data_len = raw_data_len[0] | (raw_data_len[1] << 8) | (raw_data_len[2] << 16) | (raw_data_len[3] << 24);
+    uint32_t data_len = raw_data_len[0] | (raw_data_len[1] << 8) | (raw_data_len[2] << 16) | (raw_data_len[3] << 24);
+    printf("data len: %lu\n", data_len);
     std::string out_str(data_len, '\0');
     read(sockfd, out_str.data(), data_len);
     return out_str;
@@ -95,6 +101,65 @@ void StreamtasksClient::send_message(StreamtasksMessage message)
     send_str(message.serialize());
 }
 
+void StreamtasksClient::send_signal(uint64_t address, uint64_t port, const char* descriptor, MsgPack body)
+{
+    send_message(StreamtasksMessage::addressed_message(address, port, MsgPack::object 
+    {
+        {"descriptor", descriptor}, 
+        {"body", body }
+    }));
+}
+
+MsgPack StreamtasksClient::send_fetch(uint64_t address, uint64_t port, const char *descriptor, MsgPack body)
+{
+    if (this->address == 0) 
+    {
+        throw std::runtime_error("Missing address!");
+    }
+
+    std::random_device rand_dev;
+    unsigned int return_port = rand_dev();
+
+    send_message(StreamtasksMessage::addressed_message(address, port, MsgPack::object 
+    {
+        {"descriptor", descriptor}, 
+        {"body", body },
+        {"return_port", return_port },
+        {"return_address", this->address },
+    }));
+
+    while (1)
+    {
+        StreamtasksMessage message = recv_message();
+        if (message.id() == StreamtasksMessageID::MSG_ID_ADDRESSED && message.port() == return_port) 
+        {
+            MsgPack data = message.data();
+            if (data.is_object()) {
+                if (data["error"] == true) 
+                {
+                    throw std::runtime_error("Fetch error!");
+                }
+                else 
+                {
+                    return data["body"];
+                }
+            }
+        }
+    }
+}
+
+uint64_t StreamtasksClient::resolve_address(const char *address)
+{
+    MsgPack response = send_fetch(0, StreamtasksPort::PORT_FETCH, "resolve_address_name", MsgPack::object {
+        { "address_name", address }
+    });
+    if (response.is_object() && response["address"].is_int()) 
+    {
+        return response["address"].uint64_value();
+    }
+    throw std::runtime_error("invalid resolve response!");
+}
+
 void StreamtasksClient::request_address()
 {
     send_message(StreamtasksMessage::in_topics_changed_message({1}, {}));
@@ -102,16 +167,12 @@ void StreamtasksClient::request_address()
     std::random_device rand_dev;
     unsigned int request_id = rand_dev();
 
-    send_message(StreamtasksMessage::addressed_message(0, 103, MsgPack::object
-    {
-        {"descriptor", "request_addresses"}, 
-        {"body", MsgPack::object 
-            {
-                {"request_id", request_id},
-                {"count", 1},
-            }
+    send_signal(0, PORT_SIGNAL, "request_addresses", MsgPack::object {
+        {
+            {"request_id", request_id},
+            {"count", 1},
         }
-    }));
+    });
 
     while (1)
     {
@@ -140,10 +201,4 @@ void StreamtasksClient::request_address()
 
     send_message(StreamtasksMessage::addresses_changed_message({address}, {}));
     send_message(StreamtasksMessage::in_topics_changed_message({}, {1}));
-}
-
-MsgPack StreamtasksClient::fetch(uint64_t address, uint64_t port, const char *descriptor, MsgPack body)
-{
-
-    return MsgPack();
 }

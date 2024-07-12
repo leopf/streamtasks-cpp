@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <msgpack11.hpp>
 #include <random>
+#include <stdio.h>
 
 using msgpack11::MsgPack;
 
@@ -18,6 +19,11 @@ enum StreamtasksMessageID {
     MSG_ID_OUT_TOPICS_CHANGED = 5,
 };
 
+enum StreamtasksPort {
+    PORT_FETCH = 100,
+    PORT_SIGNAL = 103,
+};
+
 struct TopicControlData
 {
     bool paused;
@@ -27,9 +33,9 @@ struct TopicControlData
 class StreamtasksMessage
 {
 protected:
-    MsgPack content;
 
 public:
+    MsgPack content;
     StreamtasksMessage(MsgPack content);
     MsgPack data();
     uint64_t topic();
@@ -62,11 +68,16 @@ public:
     StreamtasksClient(int sockfd);
     ~StreamtasksClient();
 
+    uint64_t get_address();
+
     MsgPack init(MsgPack handshake_data);
     StreamtasksMessage recv_message();
     void send_message(StreamtasksMessage message);
+    void send_signal(uint64_t address, uint64_t port, const char* descriptor, MsgPack body);
+    MsgPack send_fetch(uint64_t address, uint64_t port, const char* descriptor, MsgPack body);
+
+    uint64_t resolve_address(const char* address);
     void request_address();
-    MsgPack fetch(uint64_t address, uint64_t port, const char* descriptor, MsgPack body);
 
     static StreamtasksClient connect_unix(const char *socket_path);
 };
